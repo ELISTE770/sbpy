@@ -96,11 +96,11 @@ VSVersionInfo(
         StringTable(
           '040904B0',
           [
-            StringStruct('CompanyName', 'SBpy Project'),
+            StringStruct('CompanyName', 'Smart Binary'),
             StringStruct('FileDescription', 'SBpy - Python AI Debugger & Optimizer'),
             StringStruct('FileVersion', '0.1.0.0'),
             StringStruct('InternalName', 'sbpy'),
-            StringStruct('LegalCopyright', 'Copyright (c) 2026 Eli. All rights reserved.'),
+            StringStruct('LegalCopyright', 'Copyright (c) 2026 Smart Binary. All rights reserved.'),
             StringStruct('OriginalFilename', 'sbpy.exe'),
             StringStruct('ProductName', 'SBpy'),
             StringStruct('ProductVersion', '0.1.0.0')
