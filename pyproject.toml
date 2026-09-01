@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sbpy"
+version = "0.1.0"
+description = "Local-first Python error fixing, with Gemini as the last resort"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Eli" }]
+keywords = ["gemini", "debugging", "static-analysis", "errors", "linter", "ai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Debuggers",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+# הליבה עובדת בלי שום תלות חיצונית - הכל stdlib.
+dependencies = []
+
+[project.optional-dependencies]
+gemini = ["google-genai>=2.3.0"]
+dev = ["google-genai>=2.3.0", "pytest>=8.0"]
+
+[project.scripts]
+sbpy = "sbpy.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/eliste770-cmyk/sbpy"
+Repository = "https://github.com/eliste770-cmyk/sbpy"
+Website = "https://smartbinary.org"
+
+[tool.setuptools.packages.find]
+include = ["sbpy*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

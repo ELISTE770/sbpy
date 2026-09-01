@@ -1,0 +1,23 @@
+- id: sbpy-sfb
+  name: SBpy Search For Bugs
+  description: Fast local-first bug scanner and analyzer
+  entry: sbpy sfb
+  language: python
+  types: [python]
+  pass_filenames: true
+
+- id: sbpy-sec
+  name: SBpy Security Scanner
+  description: Scan for hardcoded secrets, shell injections, and vulnerabilities
+  entry: sbpy sec
+  language: python
+  types: [python]
+  pass_filenames: true
+
+- id: sbpy-mod
+  name: SBpy Modernizer
+  description: Suggest and modernize Python syntax
+  entry: sbpy mod
+  language: python
+  types: [python]
+  pass_filenames: true
