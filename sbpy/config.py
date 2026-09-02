@@ -30,6 +30,44 @@ DEFAULT_MODEL_AUTO = "gemini-3.5-flash-lite"
 DEFAULT_MODEL_COMMAND = "gemini-3.6-flash"
 DEFAULT_MODEL_PRO = "gemini-3.1-pro-preview"
 
+PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
+    "gemini": {
+        "auto": "gemini-3.5-flash-lite",
+        "command": "gemini-3.6-flash",
+        "pro": "gemini-3.1-pro-preview",
+    },
+    "openai": {
+        "auto": "gpt-4o-mini",
+        "command": "gpt-4o-mini",
+        "pro": "gpt-4o",
+    },
+    "anthropic": {
+        "auto": "claude-3-5-haiku-20241022",
+        "command": "claude-3-5-sonnet-20241022",
+        "pro": "claude-3-7-sonnet-20250219",
+    },
+    "claude": {
+        "auto": "claude-3-5-haiku-20241022",
+        "command": "claude-3-5-sonnet-20241022",
+        "pro": "claude-3-7-sonnet-20250219",
+    },
+    "groq": {
+        "auto": "llama-3.1-8b-instant",
+        "command": "llama-3.3-70b-versatile",
+        "pro": "llama-3.3-70b-versatile",
+    },
+    "deepseek": {
+        "auto": "deepseek-chat",
+        "command": "deepseek-chat",
+        "pro": "deepseek-reasoner",
+    },
+    "ollama": {
+        "auto": "llama3.2",
+        "command": "llama3.2",
+        "pro": "llama3.3",
+    },
+}
+
 
 import json
 
@@ -305,8 +343,11 @@ class Config:
     cache_enabled: bool = field(default_factory=lambda: _env_bool("SBPY_CACHE", True, "cache_enabled"))
     cache_ttl_days: int = field(default_factory=lambda: _env_int("SBPY_CACHE_TTL", 30, "cache_ttl_days"))
 
-    # --- תצוגה ---
-    language: str = field(default_factory=lambda: _env_str("SBPY_LANG", "en", "language"))
+    language: str = field(
+        default_factory=lambda: _env_str(
+            "SBPY_LANG", _env_str("SBPY_LANGUAGE", "en", "language"), "language"
+        )
+    )
     color: bool = field(
         default_factory=lambda: _env_bool("SBPY_COLOR", os.environ.get("NO_COLOR") is None, "color")
     )
@@ -326,18 +367,28 @@ class Config:
         return replace(self, **kwargs)
 
     def model_for(self, tier: str = TIER_AUTO) -> str:
-        """שם המודל לפי דרגה. דרגה לא מוכרת נופלת ל-auto (הזול)."""
+        """שם המודל לפי דרגה וספק AI פעיל."""
+        primary = (self.backend.split(",")[0] if self.backend else "gemini").strip().lower()
+        defaults = PROVIDER_DEFAULTS.get(primary, PROVIDER_DEFAULTS["gemini"])
+
         if tier == TIER_PRO:
+            if "gemini" in self.model_pro and primary != "gemini":
+                return defaults["pro"]
             return self.model_pro
         if tier == TIER_COMMAND:
+            if "gemini" in self.model_command and primary != "gemini":
+                return defaults["command"]
             return self.model_command
+        if "gemini" in self.model_auto and primary != "gemini":
+            return defaults["auto"]
         return self.model_auto
 
     # --- שמות ישנים, נשמרים כדי לא לשבור קוד קיים ---
     @property
     def active_api_key(self) -> str | None:
-        if self.backend in self.api_keys:
-            return self.api_keys[self.backend]
+        primary = (self.backend.split(",")[0] if self.backend else "gemini").strip().lower()
+        if primary in self.api_keys:
+            return self.api_keys[primary]
         return self.api_key
 
     @property

@@ -1184,19 +1184,29 @@ def cmd_setup(args: argparse.Namespace) -> int:
     # 1. AI Provider Selection
     console.write(console.paint("  1. Active AI Provider / Backend", "cyan", bold=True))
     console.write(f"     Current: {config.backend}")
-    console.write("     [1] gemini     (Google Gemini)")
-    console.write("     [2] openai     (OpenAI / Groq / DeepSeek)")
-    console.write("     [3] anthropic  (Anthropic Claude)")
-    console.write("     [4] ollama     (Local Models)")
-    console.write("     [5] (Keep current)")
-    
-    choice = input("     Choice (1-5) [5]: ").strip()
+    console.write("     [1] gemini     (Google Gemini - 2.5 Flash / Pro)")
+    console.write("     [2] openai     (OpenAI - GPT-4o / GPT-4o-mini)")
+    console.write("     [3] anthropic  (Anthropic Claude - 3.5 Sonnet / Haiku / 3.7)")
+    console.write("     [4] groq       (Groq - Ultra-fast Llama 3.3)")
+    console.write("     [5] deepseek   (DeepSeek - Chat / Reasoner)")
+    console.write("     [6] ollama     (Local offline models - Llama 3.2)")
+    console.write("     [7] (Keep current)")
+
+    choice = input("     Choice (1-7) [7]: ").strip()
     backend = config.backend
-    if choice == "1": backend = "gemini"
-    elif choice == "2": backend = "openai"
-    elif choice == "3": backend = "anthropic"
-    elif choice == "4": backend = "ollama"
-    
+    if choice == "1":
+        backend = "gemini"
+    elif choice == "2":
+        backend = "openai"
+    elif choice == "3":
+        backend = "anthropic"
+    elif choice == "4":
+        backend = "groq"
+    elif choice == "5":
+        backend = "deepseek"
+    elif choice == "6":
+        backend = "ollama"
+
     if backend != config.backend:
         set_config_value("backend", backend)
         config.backend = backend
@@ -1204,14 +1214,25 @@ def cmd_setup(args: argparse.Namespace) -> int:
 
     # 2. API Keys Management
     console.write(console.paint("\n  2. API Keys Management", "cyan", bold=True))
-    for provider in ["gemini", "openai", "anthropic"]:
+    supported_providers = ["gemini", "openai", "anthropic", "groq", "deepseek"]
+    for provider in supported_providers:
         status = "Configured" if api_keys.get(provider) else "Missing"
         console.write(f"     {provider.capitalize():<10} : {status}")
-        
-    edit_keys = input("     Do you want to add/update an API key? (y/N): ").strip().lower()
+
+    # Prompt immediately if active backend key is missing
+    if backend in supported_providers and not api_keys.get(backend):
+        console.write(console.paint(f"\n     ! API Key for active provider ({backend}) is missing.", "yellow"))
+        prov_key = getpass.getpass(f"     Enter API Key for {backend} (or press Enter to skip): ").strip()
+        if prov_key:
+            api_keys[backend] = prov_key
+            stored["api_keys"] = api_keys
+            save_stored_config(stored)
+            console.write(console.paint(f"     -> Key for {backend} saved!", "green"))
+
+    edit_keys = input("\n     Do you want to add/update another API key? (y/N): ").strip().lower()
     if edit_keys == "y":
-        prov = input("     Enter provider name (gemini/openai/anthropic): ").strip().lower()
-        if prov in ["gemini", "openai", "anthropic"]:
+        prov = input(f"     Enter provider name ({'/'.join(supported_providers)}): ").strip().lower()
+        if prov in supported_providers:
             new_key = getpass.getpass(f"     Enter API Key for {prov} (Press Enter to cancel): ").strip()
             if new_key:
                 api_keys[prov] = new_key
@@ -1511,6 +1532,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     raw = sys.argv[1:] if argv is None else list(argv)
+
+    if raw:
+        from .keyboard import normalize_input_command
+
+        raw = [normalize_input_command(arg).lstrip("/") for arg in raw]
 
     pro_requested = False
     if PRO_TOKEN in raw:

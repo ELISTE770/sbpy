@@ -50,8 +50,32 @@ def looks_like_decorator(rest: str) -> bool:
 
 def parse_at_line(line: str) -> dict[str, Any] | None:
     """Parses a ``/`` or ``@`` line. Returns None if it should be passed to standard Python."""
+    from .keyboard import normalize_input_command
+
+    line = normalize_input_command(line)
     raw = line.strip()
     if not (raw.startswith("/") or raw.startswith("@")):
+        from .keyboard import transliterate_keyboard
+
+        head, _, rest = raw.partition(" ")
+        trans_head = transliterate_keyboard(head).lower()
+        rev_head = transliterate_keyboard(head[::-1]).lower()
+
+        if trans_head == "sbpy" or rev_head == "sbpy":
+            if rest.strip():
+                return parse_at_line(f"/{rest.strip()}")
+            return {"kind": "fullinfo"}
+        if trans_head in ("models", "providers", "setup") or rev_head in ("models", "providers", "setup"):
+            return {"kind": "setup"}
+        if trans_head in ("fullinfo", "info", "help", "shortcuts") or rev_head in ("fullinfo", "info", "help", "shortcuts"):
+            return {"kind": "fullinfo"}
+        if trans_head in ("undo", "revert") or rev_head in ("undo", "revert"):
+            return {"kind": "undo"}
+        if trans_head == "ui" or rev_head == "ui":
+            return {"kind": "ui"}
+        if trans_head.upper() in SHORTCUTS or rev_head.upper() in SHORTCUTS:
+            code = trans_head.upper() if trans_head.upper() in SHORTCUTS else rev_head.upper()
+            return parse_at_line(f"/{code} {rest}".strip())
         return None
 
     prefix = raw[0]
@@ -159,28 +183,25 @@ class SBpyConsole(code_module.InteractiveConsole):
 
     # ------------------------------------------------------------------
     def show_slash_menu(self) -> None:
+        from .keyboard import run_interactive_arrow_picker
+
         console = self.console
         lang = self.config.language
         custom = self.config.custom_shortcuts
-        console.write()
-        console.write(console.paint("  ┌── 🛠️ SBpy Slash Commands & Shortcuts (Actions in Parentheses) ─────────────────────────┐", "cyan", bold=True))
+
+        indexed_commands: list[tuple[str, str, str]] = []
 
         # 1. Management, Settings & Docs
-        console.write(console.paint("  │ ⚙️  Settings & Documentation                                                          │", "bright_blue", bold=True))
         admin_cmds = [
             ("SETUP", "Interactive Setup: Keys, Instructions, Preferences" if lang != "he" else "אשף הגדרות: מפתחות, הנחיות אישיות והעדפות"),
             ("MODELS", "Manage AI Providers & API Keys" if lang != "he" else "ניהול ספקי AI ומפתחות (Gemini, OpenAI, Claude, Ollama)"),
             ("FULLINFO", "Full Categorized Command Directory & Guide" if lang != "he" else "ספריית פקודות מלאה ומחולקת לקטגוריות עם הסברים"),
         ]
         for code, desc in admin_cmds:
-            act_str = f"({desc})"
-            if len(act_str) > 52:
-                act_str = act_str[:49] + "...)"
-            line_str = f"  │   {console.paint('/' + code.ljust(9), 'bright_yellow', bold=True)} {console.paint(act_str.ljust(69), 'grey')} │"
-            console.write(line_str)
+            idx = len(indexed_commands) + 1
+            indexed_commands.append((str(idx), code, desc))
 
         # 2. Autonomous Agent & Live Tools
-        console.write(console.paint("  ├── 🚀 Autonomous Agent & Live Tools ──────────────────────────────────────────────────┤", "cyan"))
         dev_cmds = [
             ("UI", "Launch Local Web Dashboard & AI Pair Chat" if lang != "he" else "דשבורד Web וצ'אט AI עם החלת קוד בקליק בדפדפן"),
             ("HEAL", "Self-Healing Test Runner (loops until green)" if lang != "he" else "מנגנון ריפוי עצמי של טסטים עד 100% הצלחה"),
@@ -191,34 +212,49 @@ class SBpyConsole(code_module.InteractiveConsole):
             ("COMMIT", "Create Automated Semantic Git Commit" if lang != "he" else "יצירת קומיט סמנטי אוטומטי"),
         ]
         for code, desc in dev_cmds:
-            act_str = f"({desc})"
-            if len(act_str) > 52:
-                act_str = act_str[:49] + "...)"
-            line_str = f"  │   {console.paint('/' + code.ljust(9), 'bright_yellow', bold=True)} {console.paint(act_str.ljust(69), 'grey')} │"
-            console.write(line_str)
+            idx = len(indexed_commands) + 1
+            indexed_commands.append((str(idx), code, desc))
 
         # 3. Code Analysis Shortcuts
-        console.write(console.paint("  ├── ⚡ Code Analysis & Quick Shortcuts ────────────────────────────────────────────────┤", "cyan"))
         for code, sc in sorted(SHORTCUTS.items()):
+            idx = len(indexed_commands) + 1
             title = sc.title_en if lang != "he" else sc.title_he
-            act_str = f"({title})"
-            if len(act_str) > 52:
-                act_str = act_str[:49] + "...)"
-            line_str = f"  │   {console.paint('/' + code.ljust(9), 'bright_yellow', bold=True)} {console.paint(act_str.ljust(69), 'grey')} │"
-            console.write(line_str)
+            indexed_commands.append((str(idx), code, title))
 
         # 4. Custom Shortcuts
         if custom:
-            console.write(console.paint("  ├── 🏷️ Custom Shortcuts (Aliases) ─────────────────────────────────────────────────────┤", "cyan"))
             for name, target in sorted(custom.items()):
-                act_str = f"({target})"
-                if len(act_str) > 52:
-                    act_str = act_str[:49] + "...)"
-                line_str = f"  │   {console.paint('/' + name.ljust(9), 'green', bold=True)} {console.paint(act_str.ljust(69), 'grey')} │"
-                console.write(line_str)
+                idx = len(indexed_commands) + 1
+                indexed_commands.append((str(idx), name.upper(), target))
 
-        console.write(console.paint("  └──────────────────────────────────────────────────────────────────────────────────────┘", "cyan", bold=True))
-        console.write(console.paint("  💡 Tip: Type `/<CODE> ?` for details (e.g. `/SFB ?`), or `/FULLINFO` for full guide.", "grey", dim=True))
+        # 1. Try interactive arrow-key picker (real-time arrow navigation)
+        if getattr(sys.stdin, "isatty", lambda: False)():
+            try:
+                picked = run_interactive_arrow_picker(indexed_commands, console=self.console)
+                if picked is not None:
+                    selected_code, _ = picked
+                    full_cmd = f"/{selected_code}"
+                    console.write(console.paint(f"\n  ▶ Selected: {full_cmd}\n", "green", bold=True))
+                    parsed = parse_at_line(full_cmd)
+                    if parsed:
+                        self.handle_at(parsed)
+                    return
+                return
+            except Exception:  # sbpy: ignore=silent-except
+                pass
+
+        # 2. Fallback for non-interactive / redirection environments
+        console.write()
+        console.write(console.paint("  ┌── 🛠️ SBpy Command Directory ──────────────────────────────────────────────┐", "cyan", bold=True))
+        for idx_str, code, desc in indexed_commands:
+            act_str = f"({desc})"
+            if len(act_str) > 42:
+                act_str = act_str[:39] + "...)"
+            idx_badge = console.paint(f"[{idx_str:>2}]", "bright_yellow", bold=True)
+            cmd_badge = console.paint('/' + code.ljust(8), "bright_cyan")
+            desc_text = console.paint(act_str.ljust(44), "grey")
+            console.write(f"  │  {idx_badge} {cmd_badge} {desc_text} │")
+        console.write(console.paint("  └────────────────────────────────────────────────────────────────────────┘", "cyan", bold=True))
         console.write()
 
     # ------------------------------------------------------------------
@@ -446,6 +482,34 @@ def setup_readline_completer(namespace: dict[str, Any] | None = None) -> None:
 
         return base_completer.complete(text, state)
 
+    try:
+        import _pyrepl.completing_reader as cr
+        from _pyrepl.completing_reader import build_menu, prefix
+
+        def instant_complete_do(self: Any) -> None:
+            r = self.reader
+            stem = r.get_stem()
+            r.cmpltn_menu_choices = r.get_completions(stem)
+            completions = r.cmpltn_menu_choices
+            if not completions:
+                r.error("no matches")
+            elif len(completions) == 1:
+                r.insert(completions[0][len(stem):])
+            else:
+                p = prefix(completions, len(stem))
+                if p:
+                    r.insert(p)
+                r.cmpltn_menu_visible = True
+                r.cmpltn_message_visible = False
+                r.cmpltn_menu, r.cmpltn_menu_end = build_menu(
+                    r.console, completions, r.cmpltn_menu_end,
+                    r.use_brackets, r.sort_in_column)
+                r.dirty = True
+
+        cr.complete.do = instant_complete_do
+    except Exception:  # sbpy: ignore=silent-except
+        pass
+
     for mod in modules:
         try:
             mod.set_completer(custom_complete)
@@ -461,10 +525,15 @@ def setup_readline_completer(namespace: dict[str, Any] | None = None) -> None:
 def run_console(namespace: dict[str, Any], config: Config | None = None) -> None:
     """Runs interactive console with pyrepl or fallback."""
     console = SBpyConsole(namespace, config)
-    setup_readline_completer(namespace)
 
     interactive = bool(getattr(sys.stdin, "isatty", lambda: False)())
     if interactive:
+        try:
+            from _pyrepl.readline import _setup as pyrepl_setup
+            pyrepl_setup(namespace)
+        except Exception:  # sbpy: ignore=silent-except
+            pass
+        setup_readline_completer(namespace)
         try:
             from _pyrepl.simple_interact import run_multiline_interactive_console
 
@@ -473,6 +542,7 @@ def run_console(namespace: dict[str, Any], config: Config | None = None) -> None
         except Exception:  # sbpy: ignore=silent-except
             pass
 
+    setup_readline_completer(namespace)
     try:
         console.interact(banner="", exitmsg="")
     except SystemExit:  # sbpy: ignore=silent-except

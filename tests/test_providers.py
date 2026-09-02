@@ -32,10 +32,29 @@ class ProvidersTest(IsolatedConfigTest):
             with patch.object(engine, "_generate_ollama") as mock_ollama:
                 from sbpy.gemini import GeminiResult
                 mock_ollama.return_value = GeminiResult(ok=True, text="Ollama answer", tokens=15, model="llama3.2")
-                
+
                 res = engine.generate("Hello test")
                 self.assertTrue(res.ok)
                 self.assertEqual(res.text, "Ollama answer")
+
+    def test_provider_model_tier_defaults(self) -> None:
+        cfg_openai = Config(backend="openai")
+        self.assertEqual(cfg_openai.model_for("auto"), "gpt-4o-mini")
+        self.assertEqual(cfg_openai.model_for("command"), "gpt-4o-mini")
+        self.assertEqual(cfg_openai.model_for("pro"), "gpt-4o")
+
+        cfg_anthropic = Config(backend="anthropic")
+        self.assertEqual(cfg_anthropic.model_for("auto"), "claude-3-5-haiku-20241022")
+        self.assertEqual(cfg_anthropic.model_for("command"), "claude-3-5-sonnet-20241022")
+        self.assertEqual(cfg_anthropic.model_for("pro"), "claude-3-7-sonnet-20250219")
+
+        cfg_groq = Config(backend="groq")
+        self.assertEqual(cfg_groq.model_for("auto"), "llama-3.1-8b-instant")
+        self.assertEqual(cfg_groq.model_for("command"), "llama-3.3-70b-versatile")
+
+        cfg_deepseek = Config(backend="deepseek")
+        self.assertEqual(cfg_deepseek.model_for("auto"), "deepseek-chat")
+        self.assertEqual(cfg_deepseek.model_for("pro"), "deepseek-reasoner")
 
 
 if __name__ == "__main__":

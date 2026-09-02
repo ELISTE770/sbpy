@@ -164,6 +164,96 @@ def fix_name_error(info: ErrorInfo) -> list[Diagnosis]:
     ctx = info.ctx
     out: list[Diagnosis] = []
 
+    # 0. זיהוי טעות מקלדת עברית (למשל 'טפנד' / 'דנפט' -> 'sbpy', 'פרורא' -> 'print', 'ישקשך' -> 'heal')
+    if any("\u0590" <= c <= "\u05fe" for c in name):
+        from ..keyboard import transliterate_keyboard
+        from ..shortcuts import SHORTCUTS
+
+        trans = transliterate_keyboard(name).lower()
+        rev_trans = transliterate_keyboard(name[::-1]).lower()
+
+        known_targets: dict[str, str] = {
+            "sbpy": "sbpy",
+            "setup": "setup",
+            "models": "models",
+            "fullinfo": "fullinfo",
+            "undo": "undo",
+            "commit": "commit",
+            "heal": "heal",
+            "agent": "agent",
+            "find": "find",
+            "gen": "gen",
+            "ui": "ui",
+            "true": "True",
+            "false": "False",
+            "none": "None",
+            "print": "print",
+            "len": "len",
+            "range": "range",
+            "exit": "exit()",
+            "quit": "quit()",
+            "help": "help()",
+        }
+        for code in SHORTCUTS:
+            known_targets[code.lower()] = f"/{code}"
+
+        all_scope: list[str] = []
+        if ctx is not None:
+            all_scope.extend(ctx.scope_names())
+            if ctx.filename:
+                all_scope.extend(module_names(ctx.filename))
+        all_scope.extend(dir(builtins))
+        all_scope.extend(COMMON_MODULES)
+
+        for s in all_scope:
+            known_targets[s.lower()] = s
+
+        target = None
+        if trans in known_targets:
+            target = known_targets[trans]
+        elif rev_trans in known_targets:
+            target = known_targets[rev_trans]
+        else:
+            candidates_list = list(known_targets.values())
+            m1, s1 = typo.best_match(trans, candidates_list, cutoff=0.75)
+            m2, s2 = typo.best_match(rev_trans, candidates_list, cutoff=0.75)
+            if m1 and s1 >= 0.75:
+                target = m1
+            elif m2 and s2 >= 0.75:
+                target = m2
+            else:
+                target = trans if trans else rev_trans
+
+        if target:
+            is_he = info.lang == "he"
+            title = (
+                f"טעות במקלדת עברית: השם '{name}' הוקלד בעברית"
+                if is_he
+                else f"Hebrew keyboard layout typo: '{name}' was typed in Hebrew"
+            )
+            suggestion = (
+                f"האם התכוונת ל-'{target}'? (תרגום מקלדת עברית->אנגלית: '{name}' -> '{target}')"
+                if is_he
+                else f"Did you mean '{target}'? (transliterated from Hebrew keyboard layout: '{name}' -> '{target}')"
+            )
+            detail = (
+                f"המקלדת הייתה על עברית. תרגום האותיות: '{name}' הופך ל-'{target}'."
+                if is_he
+                else f"Your keyboard was set to Hebrew layout. '{name}' maps to '{target}' on standard QWERTY."
+            )
+            return [
+                Diagnosis(
+                    title=title,
+                    detail=detail,
+                    suggestion=suggestion,
+                    confidence=0.98,
+                    source="local",
+                    rule="name.hebrew-keyboard",
+                    patch=target,
+                    meta={"kind": "hebrew_keyboard_typo", "bad": name, "good": target},
+                )
+            ]
+
     # 1. מודול מוכר שנשכח לייבא
     if name in COMMON_MODULES or name in PACKAGE_ALIASES:
         return [
@@ -1158,6 +1248,51 @@ def fix_syntax(info: ErrorInfo) -> list[Diagnosis]:
     text = (getattr(exc, "text", "") or "").rstrip("\n")
     lineno = getattr(exc, "lineno", 0) or 0
     out: list[Diagnosis] = []
+    # 0. זיהוי שורת קוד שהוקלדה במקלדת זרה (עברית, רוסית, ערבית, יוונית או פקודות בשפה טבעית)
+    if text and any(ord(c) > 127 for c in text):
+        from ..keyboard import transliterate_line
+
+        translated = transliterate_line(text)
+        if translated != text:
+            is_valid = False
+            try:
+                ast.parse(translated)
+                is_valid = True
+            except SyntaxError:  # sbpy: ignore=silent-except
+                try:
+                    ast.parse(translated + "\n    pass")
+                    is_valid = True
+                except SyntaxError:  # sbpy: ignore=silent-except
+                    pass
+
+            is_he = info.lang == "he"
+            title = (
+                "טעות פריסת מקלדת: שורת הקוד נכתבה במקלדת לא-אנגלית"
+                if is_he
+                else "Foreign keyboard layout: Code line was typed in non-English keyboard"
+            )
+            detail = (
+                f"שורת הקוד תורגמה לפייתון תקין: {translated}"
+                if is_he
+                else f"Line transliterated to valid Python: {translated}"
+            )
+            suggestion = (
+                f"החלף את השורה בקוד המתוקן: {translated}"
+                if is_he
+                else f"Replace line with corrected Python code: {translated}"
+            )
+            out.append(
+                Diagnosis(
+                    title=title,
+                    detail=detail,
+                    suggestion=suggestion,
+                    confidence=0.98 if is_valid else 0.88,
+                    source="local",
+                    rule="syntax.keyboard-layout",
+                    patch=translated,
+                    meta={"kind": "keyboard_layout_syntax", "bad": text, "good": translated},
+                )
+            )
 
     if "missing parentheses in call to" in message:
         out.append(

@@ -73,14 +73,23 @@ def classify_error(exc: Exception) -> str:
     return "other"
 
 
-def friendly_error(exc: Exception, kind: str, model: str) -> str:
-    """הודעת שגיאה שאפשר לעשות איתה משהו, במקום JSON של 400 תווים."""
+def friendly_error(exc: Exception, kind: str, model: str, lang: str = "en") -> str:
+    """Friendly error message based on language preference."""
+    if lang == "he":
+        if kind == "quota":
+            return f"מכסה מוצתה עבור {model} - בדוק את התוכנית שלך או נסה שוב מאוחר יותר"
+        if kind == "unavailable":
+            return f"המודל {model} לא זמין למפתח הזה"
+        if kind == "network":
+            return f"בעיית חיבור לרשת: {type(exc).__name__}"
+        return f"{type(exc).__name__}: {str(exc)[:200]}"
+
     if kind == "quota":
-        return f"מכסה מוצתה עבור {model} - בדוק את התוכנית שלך או נסה שוב מאוחר יותר"
+        return f"Quota exceeded for {model} - check your API plan or try again later"
     if kind == "unavailable":
-        return f"המודל {model} לא זמין למפתח הזה"
+        return f"Model {model} is not available for this API key"
     if kind == "network":
-        return f"בעיית רשת: {type(exc).__name__}"
+        return f"Network Connection Error: {type(exc).__name__}"
     return f"{type(exc).__name__}: {str(exc)[:200]}"
 
 
@@ -151,14 +160,39 @@ class GeminiEngine:
             return {"available": False, "reason": "disabled"}
         if self.config.offline:
             return {"available": False, "reason": "offline"}
+
         backends = [b.strip().lower() for b in self.config.backend.split(",") if b.strip()]
-        if any(b in ("ollama", "openai", "groq", "deepseek", "anthropic", "claude") for b in backends):
-            return {"available": True, "reason": "", "backend": self.config.backend}
-        if not sdk_available():
-            return {"available": False, "reason": "no-sdk", "fix": "pip install -U google-genai"}
-        if not self.config.active_api_key:
-            return {"available": False, "reason": "no-api-key", "fix": "set GEMINI_API_KEY"}
-        return {"available": True, "reason": "", "backend": "gemini"}
+        if not backends:
+            backends = ["gemini"]
+
+        available_backends: list[str] = []
+        last_reason = "no-api-key"
+        last_fix = ""
+
+        for b in backends:
+            if b == "ollama":
+                available_backends.append("ollama")
+            elif b in ("openai", "groq", "deepseek", "anthropic", "claude"):
+                key = self.key_for(b) or os.environ.get(f"{b.upper()}_API_KEY", "") or os.environ.get("SBPY_API_KEY", "")
+                if key:
+                    available_backends.append(b)
+                else:
+                    last_reason = "no-api-key"
+                    last_fix = f"sbpy config set-key {b} <key> (or set {b.upper()}_API_KEY)"
+            elif b == "gemini":
+                if not sdk_available():
+                    last_reason = "no-sdk"
+                    last_fix = "pip install -U google-genai"
+                elif self.config.active_api_key:
+                    available_backends.append("gemini")
+                else:
+                    last_reason = "no-api-key"
+                    last_fix = "set GEMINI_API_KEY"
+
+        if available_backends:
+            return {"available": True, "reason": "", "backend": ",".join(available_backends)}
+
+        return {"available": False, "reason": last_reason, "backend": backends[0], "fix": last_fix}
 
     @property
     def available(self) -> bool:
@@ -260,12 +294,14 @@ class GeminiEngine:
                 elif b in ("openai", "groq", "deepseek"):
                     from .providers import call_openai_compatible
 
+                    prov_model = model if model and "gemini" not in model else self.config.model_for(tier)
                     ret = call_openai_compatible(
                         prompt=prompt,
                         system=system,
                         schema=schema,
                         api_key=self.key_for(b),
-                        model=model if model and "gemini" not in model else "gpt-4o-mini",
+                        model=prov_model,
+                        provider=b,
                         timeout=self.config.timeout,
                     )
                     if ret.get("ok"):
@@ -282,17 +318,20 @@ class GeminiEngine:
                 elif b in ("anthropic", "claude"):
                     from .providers import call_anthropic
 
+                    prov_model = model if model and "gemini" not in model else self.config.model_for(tier)
                     ret = call_anthropic(
                         prompt=prompt,
                         system=system,
+                        schema=schema,
                         api_key=self.key_for(b),
-                        model=model if model and "gemini" not in model else "claude-3-5-haiku-20241022",
+                        model=prov_model,
                         timeout=self.config.timeout,
                     )
                     if ret.get("ok"):
                         return GeminiResult(
                             ok=True,
                             text=ret.get("text", ""),
+                            data=ret.get("data"),
                             tokens=ret.get("tokens", 0),
                             model=ret.get("model", b),
                             tier=tier,
@@ -359,7 +398,7 @@ class GeminiEngine:
                             if fallback.ok:
                                 fallback.downgraded_from = model
                             return fallback
-                        last_error = friendly_error(exc, failure, model)
+                        last_error = friendly_error(exc, failure, model, lang=self.config.language)
 
         return GeminiResult(ok=False, error=last_error, tier=tier)
 

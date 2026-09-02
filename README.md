@@ -82,13 +82,24 @@ You can run `sbpy.exe` or `sbpy.cmd` directly without installing any global pack
 sbpy sfb app.py
 ```
 
-### Configuring API Key (Optional)
+### Configuring API Key & Environment Variables
 SBpy operates fully offline out-of-the-box. To enable AI escalation:
 ```bash
 sbpy config set-key "your-gemini-api-key"
 # or set environment variable:
 setx GEMINI_API_KEY "your-key"
 ```
+
+You can also customize SBpy with the following environment variables:
+- `SBPY_API_KEY`: API Key for AI providers (Gemini, OpenAI, Claude).
+- `SBPY_OFFLINE`: Set to `1` or `true` to enforce local-only operation with zero network calls.
+- `SBPY_BACKEND`: Selected AI provider backend (`gemini`, `ollama`, `openai`, `claude`).
+- `SBPY_LANGUAGE`: Output language (`en` or `he`).
+- `SBPY_MODEL_AUTO`: Model for automatic runtime escalation (`gemini-2.5-flash-lite`).
+- `SBPY_MODEL_COMMAND`: Model for interactive commands (`gemini-2.5-flash`).
+- `SBPY_MODEL_PRO`: Model for deep reasoning tasks (`gemini-2.5-pro`).
+- `SBPY_HOME`: Custom config directory location (defaults to `~/.sbpy`).
+
 Run `sbpy doctor` at any time to verify system connectivity and configuration.
 
 ---
@@ -162,33 +173,35 @@ sbpy sfb src/ --fix --apply # Scan directory and fix all issues
 
 ## Shortcuts Directory
 
-| Shortcut | Description | Local Engine | AI Escalation |
+<!-- sbpy:shortcuts:start -->
+| קיצור | מה זה עושה | שכבה מקומית | פונה ל-Gemini |
 |---|---|---|---|
-| `/API` | Generate FastAPI / Flask endpoints | Style & Schema | Fallback |
-| `/ARCH` | Enforce architecture & circular import checks | Project Graph | Never |
-| `/ASK` | Free-text question to Gemini AI | — | Always |
-| `/ASYNC` | Convert blocking code to asynchronous | Optimization | Fallback |
-| `/CLEAN` | Automated dead-code & formatting cleanup | Style rules | Fallback |
-| `/CLONE` | Duplicate & near-duplicate code detection | Project AST | Never |
-| `/CMP` | Cyclomatic complexity metrics | Complexity AST | Never |
-| `/DEAD` | Unreachable code & unused variable detection | Flow analysis | Never |
-| `/DEBUG` | Inject structured debug logging | Debug hooks | Fallback |
-| `/DOC` | Generate Google/NumPy-style docstrings | Docstring engine | Never |
-| `/EXP` | Explain function, class, or stack trace | — | Always |
-| `/MOCK` | Generate unittest / pytest mocks | Mock generator | Fallback |
-| `/MOD` | Modernize syntax to latest Python standards | Mod fixers | Never |
-| `/NAM` | Semantic naming recommendations | — | Always |
-| `/OPT` | Performance & memory optimization | Optimization | Fallback |
-| `/REF` | Refactoring suggestions | — | Always |
-| `/REVIEW` | Comprehensive multi-pass code review | Multi-layer | Always |
-| `/SEC` | Security vulnerabilities & injection audit | Security AST | Fallback |
-| `/SFB` | Search For Bugs | Bug / Style rules | Fallback |
-| `/SOLID` | SOLID architectural principles check | Architecture | Fallback |
-| `/SQL` | SQL query optimization & injection scan | SQL analyzer | Fallback |
-| `/TAINT` | Source-to-sink data-flow taint analysis | Taint tracker | Fallback |
-| `/TODO` | Collect and prioritize TODOs | Scanner | Never |
-| `/TST` | Self-verifying unit test generation | Test suite | Always |
-| `/TYP` | Infer and insert PEP 484 type hints | Type inference | Never |
+| `/API` | יצירת Endpoints (FastAPI / Flask) | style | רק אם המקומי לא מצא |
+| `/ARCH` | אכיפת ארכיטקטורה ומעגלי ייבוא | כל הפרויקט | אף פעם |
+| `/ASK` | שאלה חופשית | — | תמיד |
+| `/ASYNC` | המרה לקוד אסינכרוני | opt | רק אם המקומי לא מצא |
+| `/CLEAN` | ניקוי קוד (Cleanup) | style | רק אם המקומי לא מצא |
+| `/CLONE` | איתור קוד משוכפל | כל הפרויקט | אף פעם |
+| `/CMP` | מדד מורכבות | complexity | אף פעם |
+| `/DEAD` | איתור קוד מת | כל הפרויקט | אף פעם |
+| `/DEBUG` | הוספת לוגים והדפסות דיבאג | bug | רק אם המקומי לא מצא |
+| `/DOC` | כתיבת תיעוד | doc | אף פעם |
+| `/EXP` | הסבר קוד | — | תמיד |
+| `/MOCK` | יצירת Mocks לטסטים | bug | רק אם המקומי לא מצא |
+| `/MOD` | שדרוג לתחביר פייתון מודרני | mod | אף פעם |
+| `/NAM` | שיפור שמות | — | תמיד |
+| `/OPT` | שיפור ביצועים | opt | רק אם המקומי לא מצא |
+| `/REF` | הצעת ריפקטור | — | תמיד |
+| `/REVIEW` | סקירת קוד מלאה | bug, sec, opt, style | תמיד |
+| `/SEC` | סריקת אבטחה | sec | רק אם המקומי לא מצא |
+| `/SFB` | חיפוש באגים | bug, style | רק אם המקומי לא מצא |
+| `/SOLID` | אכיפת עקרונות SOLID | style | רק אם המקומי לא מצא |
+| `/SQL` | בדיקת שאילתות SQL ואבטחה | sec, opt | רק אם המקומי לא מצא |
+| `/TAINT` | ניתוח זרימת מידע ואבטחה | sec | רק אם המקומי לא מצא |
+| `/TODO` | רשימת משימות בקוד | todo | אף פעם |
+| `/TST` | כתיבת בדיקות | — | תמיד |
+| `/TYP` | הוספת רמזי טיפוס | type | אף פעם |
+<!-- sbpy:shortcuts:end -->
 
 ---
 

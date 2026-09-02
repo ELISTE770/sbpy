@@ -45,12 +45,27 @@ def call_openai_compatible(
     system: str = "",
     schema: dict[str, Any] | None = None,
     api_key: str = "",
-    url: str = "https://api.openai.com/v1/chat/completions",
+    url: str = "",
     model: str = "gpt-4o-mini",
     timeout: float = 60.0,
+    provider: str = "openai",
 ) -> dict[str, Any]:
     """פנייה לספק תואם OpenAI (OpenAI, Groq, DeepSeek, Together, LocalAI, vLLM)."""
-    api_key = api_key or os.environ.get("OPENAI_API_KEY", "") or os.environ.get("GROQ_API_KEY", "") or os.environ.get("DEEPSEEK_API_KEY", "")
+    if not url:
+        if provider == "groq" or "llama" in model.lower():
+            url = "https://api.groq.com/openai/v1/chat/completions"
+        elif provider == "deepseek" or "deepseek" in model.lower():
+            url = "https://api.deepseek.com/chat/completions"
+        else:
+            url = "https://api.openai.com/v1/chat/completions"
+
+    api_key = (
+        api_key
+        or os.environ.get("OPENAI_API_KEY", "")
+        or os.environ.get("GROQ_API_KEY", "")
+        or os.environ.get("DEEPSEEK_API_KEY", "")
+        or os.environ.get("SBPY_API_KEY", "")
+    )
     if not api_key and "localhost" not in url and "127.0.0.1" not in url:
         return {"ok": False, "error": "missing-api-key"}
 
@@ -95,12 +110,18 @@ def call_anthropic(
     *,
     prompt: str,
     system: str = "",
+    schema: dict[str, Any] | None = None,
     api_key: str = "",
     model: str = "claude-3-5-haiku-20241022",
     timeout: float = 60.0,
 ) -> dict[str, Any]:
     """פנייה ל-Anthropic Claude API."""
-    api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+    api_key = (
+        api_key
+        or os.environ.get("ANTHROPIC_API_KEY", "")
+        or os.environ.get("CLAUDE_API_KEY", "")
+        or os.environ.get("SBPY_API_KEY", "")
+    )
     if not api_key:
         return {"ok": False, "error": "missing-api-key"}
 
@@ -131,8 +152,15 @@ def call_anthropic(
 
         contents = resp_data.get("content", [])
         text = "".join(c.get("text", "") for c in contents if c.get("type") == "text")
-        tokens = int(resp_data.get("usage", {}).get("input_tokens", 0) + resp_data.get("usage", {}).get("output_tokens", 0))
+        tokens = int(
+            resp_data.get("usage", {}).get("input_tokens", 0)
+            + resp_data.get("usage", {}).get("output_tokens", 0)
+        )
 
-        return {"ok": True, "text": text, "tokens": tokens, "model": model}
+        data = None
+        if schema:
+            data = _parse_json_response(text)
+
+        return {"ok": True, "text": text, "data": data, "tokens": tokens, "model": model}
     except Exception as exc:
         return {"ok": False, "error": str(exc), "model": model}
