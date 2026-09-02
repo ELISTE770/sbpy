@@ -207,6 +207,8 @@ def _banner(short: bool = False) -> None:
 
     print()
     print(f"  {_p('SBpy', 'bright_cyan', bold=True)} {_p('v' + sbpy.__version__, 'grey')}   {state}")
+    print(f"  {_p('Built by Smart Binary', 'cyan', bold=True)} {_p('• https://smartbinary.org', 'grey')}")
+    print(f"  {_p('GitHub: https://github.com/ELISTE770/sbpy', 'grey')}")
     print(f"  {_p('python ' + sys.version.split()[0], 'grey')}")
     print()
 

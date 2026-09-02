@@ -416,7 +416,13 @@ class SBpyInstallerGUI(tk.Tk):
             install_dir = Path(self.install_dir_var.get().strip())
             exe_path = install_dir / "sbpy.exe"
             if exe_path.exists():
-                subprocess.Popen([str(exe_path)], cwd=str(install_dir))
+                try:
+                    if sys.platform == "win32":
+                        subprocess.Popen(f'start "" "{str(exe_path)}"', cwd=str(install_dir), shell=True)
+                    else:
+                        subprocess.Popen([str(exe_path)], cwd=str(install_dir))
+                except Exception as e:
+                    print(f"Error launching: {e}", file=sys.stderr)
         self.destroy()
 
     # --- Custom Sleek Checkbox Widget (Never glitches to white background) ---

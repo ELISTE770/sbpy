@@ -258,6 +258,13 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def cmd_shell(args: argparse.Namespace) -> int:
     config = _apply_common(args)
+    if getattr(sys, "frozen", False):
+        from . import _startup
+        from .shell import run_console
+
+        _startup._banner(short=getattr(args, "short", False))
+        return run_console(globals(), config)
+
     startup = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_startup.py")
 
     environment = dict(os.environ)
