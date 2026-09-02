@@ -3,6 +3,7 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+Output/
 .venv/
 .build_venv/
 venv/
@@ -12,3 +13,4 @@ venv/
 .sbpy/
 *.spec
 version_info.txt
+tmp_test_sbpy_updater/

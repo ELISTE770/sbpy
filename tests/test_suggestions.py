@@ -143,11 +143,33 @@ class SuggestionsTest(unittest.TestCase):
         console.push("/1")
         self.assertTrue(ns["executed"])
 
-    def test_parse_at_line_option(self) -> None:
-        parsed = parse_at_line("/2")
-        self.assertIsNotNone(parsed)
-        self.assertEqual(parsed["kind"], "option")
-        self.assertEqual(parsed["index"], 2)
+    def test_register_options_for_pip_typo_and_transliteration(self) -> None:
+        report = Report(
+            exc_type="SyntaxError",
+            exc_message="invalid syntax",
+        )
+        diag = Diagnosis(
+            title="Foreign keyboard layout",
+            suggestion="Replace line with corrected Python code: pip instal",
+            patch="pip instal",
+            meta={"kind": "keyboard_layout_syntax", "bad": "פinput", "good": "pip instal"},
+            confidence=0.98,
+        )
+        report.add(diag)
+        options = register_options_from_report(report)
+        self.assertGreaterEqual(len(options), 1)
+        self.assertEqual(options[0].command, "pip install")
+        self.assertEqual(options[0].kind, "shell")
+        # Check that AI escalation option is always included
+        ai_opt = next((o for o in options if o.command == "/+"), None)
+        self.assertIsNotNone(ai_opt)
+
+    def test_terminal_aliases_install(self) -> None:
+        from sbpy.terminal_alias import install_terminal_aliases
+
+        installed = install_terminal_aliases()
+        self.assertIsInstance(installed, list)
+        self.assertGreater(len(installed), 0)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,1 @@
+& py -m sbpy @args

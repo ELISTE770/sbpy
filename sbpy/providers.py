@@ -47,7 +47,7 @@ def call_openai_compatible(
     api_key: str = "",
     url: str = "",
     model: str = "gpt-4o-mini",
-    timeout: float = 60.0,
+    timeout: float = 12.0,
     provider: str = "openai",
 ) -> dict[str, Any]:
     """פנייה לספק תואם OpenAI (OpenAI, Groq, DeepSeek, Together, LocalAI, vLLM)."""
@@ -113,7 +113,7 @@ def call_anthropic(
     schema: dict[str, Any] | None = None,
     api_key: str = "",
     model: str = "claude-3-5-haiku-20241022",
-    timeout: float = 60.0,
+    timeout: float = 12.0,
 ) -> dict[str, Any]:
     """פנייה ל-Anthropic Claude API."""
     api_key = (

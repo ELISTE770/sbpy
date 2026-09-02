@@ -21,8 +21,10 @@ import shlex
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable
 
+from .config import get_config
 from .console import get_console
 from .results import Report, ScanResult
 
@@ -49,8 +51,22 @@ def safe_install_argv(command: str) -> list[str] | None:
     if len(parts) < 3:
         return None
 
+    installer_type, base_argv = detect_package_installer()
+
     if parts[:2] == ["pip", "install"]:
         packages = parts[2:]
+    elif parts[:2] == ["poetry", "add"]:
+        packages = parts[2:]
+        base_argv = ["poetry", "add"]
+    elif parts[:2] == ["pipenv", "install"]:
+        packages = parts[2:]
+        base_argv = ["pipenv", "install"]
+    elif parts[:2] == ["uv", "add"]:
+        packages = parts[2:]
+        base_argv = ["uv", "add"]
+    elif parts[:3] == ["uv", "pip", "install"]:
+        packages = parts[3:]
+        base_argv = ["uv", "pip", "install"]
     elif parts[:4] == [sys.executable, "-m", "pip", "install"] or parts[:3] == ["python", "-m", "pip"]:
         packages = parts[parts.index("install") + 1 :] if "install" in parts else []
     else:
@@ -58,7 +74,36 @@ def safe_install_argv(command: str) -> list[str] | None:
 
     if not packages or not all(_PACKAGE_RE.match(name) for name in packages):
         return None
-    return [sys.executable, "-m", "pip", "install", *packages]
+    return [*base_argv, *packages]
+
+
+def detect_package_installer() -> tuple[str, list[str]]:
+    """Detects active virtualenv or package manager (poetry, pipenv, uv, venv)."""
+    cwd = Path.cwd()
+    if (cwd / "poetry.lock").exists():
+        return "poetry", ["poetry", "add"]
+    if (cwd / "uv.lock").exists():
+        return "uv", ["uv", "add"]
+    if (cwd / "Pipfile").exists():
+        return "pipenv", ["pipenv", "install"]
+
+    venv_dir = os.environ.get("VIRTUAL_ENV")
+    if not venv_dir:
+        for candidate in (".venv", "venv"):
+            if (cwd / candidate).is_dir():
+                venv_dir = str(cwd / candidate)
+                break
+
+    if venv_dir:
+        py_exe = (
+            Path(venv_dir) / "Scripts" / "python.exe"
+            if os.name == "nt"
+            else Path(venv_dir) / "bin" / "python"
+        )
+        if py_exe.exists():
+            return "venv", [str(py_exe), "-m", "pip", "install"]
+
+    return "pip", [sys.executable, "-m", "pip", "install"]
 
 
 @dataclass
@@ -104,7 +149,7 @@ def register_options_from_report(report: Report) -> list[Option]:
     clear_options()
     options: list[Option] = []
 
-    # 1. Check if an automated patch can be constructed directly from the report
+    # 1. Check if an automated file patch can be constructed directly from the report
     try:
         patch = build_from_report(report)
     except Exception:
@@ -117,7 +162,7 @@ def register_options_from_report(report: Report) -> list[Option]:
                 index=len(options) + 1,
                 title=f"Apply auto-fix to {os.path.basename(report.file)} ({desc})",
                 kind="patch",
-                command=f"apply_patch()",
+                command="apply_patch()",
                 action=lambda p=patch: p.apply(backup=True),
                 file=report.file,
                 patch=patch,
@@ -127,29 +172,78 @@ def register_options_from_report(report: Report) -> list[Option]:
     # 2. Extract actionable suggestions from diagnoses
     for diag in report.sorted_diagnoses():
         sugg = diag.suggestion or ""
-        if not sugg:
-            continue
+        patch_text = (diag.patch or "").strip()
+        meta = diag.meta or {}
 
-        # Check for pip install command
-        pip_match = _PIP_RE.search(sugg)
+        # 2a. Check direct patch
+        if patch_text:
+            if re.match(r"^pip\s+install?\b", patch_text, re.IGNORECASE):
+                norm_cmd = re.sub(r"^pip\s+instal\b", "pip install", patch_text, flags=re.IGNORECASE)
+                if not any(opt.command == norm_cmd for opt in options):
+                    options.append(
+                        Option(
+                            index=len(options) + 1,
+                            title=f"Run command: {norm_cmd}",
+                            kind="shell",
+                            command=norm_cmd,
+                        )
+                    )
+            elif patch_text.lower() in ("sbpy", "setup", "models", "ui", "heal", "agent", "find", "gen", "undo", "commit") or patch_text.startswith("/"):
+                cmd = patch_text if patch_text.startswith("/") else f"/{patch_text.upper()}"
+                if not any(opt.command == cmd for opt in options):
+                    options.append(
+                        Option(
+                            index=len(options) + 1,
+                            title=f"Run SBpy command: {cmd}",
+                            kind="command",
+                            command=cmd,
+                        )
+                    )
+            else:
+                # Python code / transliterated statement / expression
+                if not any(opt.command == patch_text for opt in options):
+                    options.append(
+                        Option(
+                            index=len(options) + 1,
+                            title=f"Execute / Apply Python code: {patch_text[:60]}",
+                            kind="python",
+                            command=patch_text,
+                        )
+                    )
+
+        # 2b. Check for pip install command in suggestion
+        pip_match = re.search(r"\b(pip\s+install?\s+[a-zA-Z0-9_\-]+)\b", sugg, re.IGNORECASE)
         if pip_match:
-            cmd = pip_match.group(1)
-            options.append(
-                Option(
-                    index=len(options) + 1,
-                    title=f"Run command: {cmd}",
-                    kind="shell",
-                    command=cmd,
+            cmd = re.sub(r"^pip\s+instal\b", "pip install", pip_match.group(1), flags=re.IGNORECASE)
+            if not any(opt.command == cmd for opt in options):
+                options.append(
+                    Option(
+                        index=len(options) + 1,
+                        title=f"Run command: {cmd}",
+                        kind="shell",
+                        command=cmd,
+                    )
                 )
-            )
 
-        # Check for inline python expressions / statements in backticks
+        # 2c. Check meta target/good
+        good = meta.get("good") or meta.get("target")
+        if good and isinstance(good, str):
+            good = good.strip()
+            if not any(opt.command == good for opt in options):
+                if re.match(r"^pip\s+install?\b", good, re.IGNORECASE):
+                    norm = re.sub(r"^pip\s+instal\b", "pip install", good, flags=re.IGNORECASE)
+                    options.append(Option(index=len(options) + 1, title=f"Run command: {norm}", kind="shell", command=norm))
+                elif good.lower() in ("sbpy", "setup", "models", "ui", "heal", "agent", "find", "gen", "undo", "commit"):
+                    cmd = f"/{good.upper()}"
+                    options.append(Option(index=len(options) + 1, title=f"Run SBpy command: {cmd}", kind="command", command=cmd))
+                elif not any(opt.command == good for opt in options):
+                    options.append(Option(index=len(options) + 1, title=f"Execute Python code: {good}", kind="python", command=good))
+
+        # 2d. Check for inline python expressions / statements in backticks
         code_matches = _CODE_BLOCK_RE.findall(sugg)
         for code in code_matches:
             code = code.strip()
-            # If it's a code snippet, import or fix
             if any(code.startswith(k) for k in ("open(", "import ", "with open", "from ", "def ", "class ")) or ("=" in code and not code.startswith("--")):
-                # Avoid duplicate options
                 if not any(opt.command == code for opt in options):
                     options.append(
                         Option(
@@ -174,6 +268,39 @@ def register_options_from_report(report: Report) -> list[Option]:
                 )
             )
 
+    # 4. Provide option to send or retry AI (Flash) without '+' suffix
+    cfg = get_config()
+    lang = getattr(report, "lang", None) or cfg.language
+    if getattr(report, "escalated", False):
+        ai_title = "לשלוח שוב ל-AI (Flash)" if lang == "he" else "Retry sending to AI (Flash)"
+    else:
+        ai_title = "שלח ל-AI (Flash)" if lang == "he" else "Send to AI (Flash)"
+
+    if not any(opt.command in ("+", "/+", "/ai_escalate") for opt in options):
+        options.append(
+            Option(
+                index=len(options) + 1,
+                title=ai_title,
+                kind="command",
+                command="/+",
+            )
+        )
+
+    # 5. Provide easy numbered option to update SBpy if update is available
+    from .updater import read_cached_update
+    up_cached = read_cached_update(cfg)
+    if up_cached and up_cached.get("update_available"):
+        latest = up_cached.get("latest_version")
+        if not any(opt.command in ("/UPDATE", "/UPGRADE") for opt in options):
+            options.append(
+                Option(
+                    index=len(options) + 1,
+                    title=f"Upgrade SBpy to v{latest} from GitHub (/UPDATE)",
+                    kind="command",
+                    command="/UPDATE",
+                )
+            )
+
     set_options(options)
     return options
 
@@ -184,6 +311,7 @@ def register_options_from_scan(result: ScanResult) -> list[Option]:
 
     clear_options()
     options: list[Option] = []
+    patch = None
 
     if result.findings and result.target and os.path.isfile(result.target):
         try:
@@ -191,47 +319,74 @@ def register_options_from_scan(result: ScanResult) -> list[Option]:
         except Exception:
             patch = None
 
-        if patch and patch.edits:
-            options.append(
-                Option(
-                    index=len(options) + 1,
-                    title=f"Apply all {len(patch.edits)} auto-fixes to {os.path.basename(result.target)}",
-                    kind="patch",
-                    command=f"/FIX {result.target}",
-                    action=lambda p=patch: p.apply(backup=True),
-                    file=result.target,
-                    patch=patch,
-                )
+    if patch and patch.edits:
+        options.append(
+            Option(
+                index=len(options) + 1,
+                title=f"Apply all {len(patch.edits)} auto-fixes to {os.path.basename(result.target)}",
+                kind="patch",
+                command=f"/FIX {result.target}",
+                action=lambda p=patch: p.apply(backup=True),
+                file=result.target,
+                patch=patch,
             )
+        )
 
     set_options(options)
     return options
 
 
+def choose_option_interactively(options: list[Option], console: Any = None) -> Option | None:
+    """Lets the user select an option using real-time arrow keys or numeric prompt."""
+    if not options:
+        return None
+    console = console or get_console()
+
+    # If terminal is interactive, use arrow-key picker
+    if getattr(sys.stdin, "isatty", lambda: False)():
+        try:
+            from .keyboard import run_interactive_arrow_picker
+
+            items = [(str(opt.index), f"[{opt.index}] {opt.title}", opt.kind) for opt in options]
+            picked = run_interactive_arrow_picker(items, title="Select Action to Execute", console=console)
+            if picked is not None:
+                idx_str = picked[0]
+                idx = int(idx_str)
+                return next((o for o in options if o.index == idx), None)
+            return None
+        except Exception:  # sbpy: ignore=silent-except
+            pass
+
+    return options[0]
+
+
 def execute_option(
-    index: int,
+    index: int | None = None,
     namespace: dict[str, Any] | None = None,
     console: Any = None,
 ) -> Any:
-    """Executes a numbered option by index (1-based)."""
+    """Executes a numbered option by index (1-based), or prompts interactively if index is None."""
     options = get_options()
+    console = console or get_console()
     if not options:
-        if console:
-            console.write(console.paint("  No active suggestions to execute.", "yellow"))
-        else:
-            print("  No active suggestions to execute.")
+        console.write(console.paint("  No active suggestions to execute.", "yellow"))
         return None
+
+    if index is None:
+        if len(options) == 1:
+            index = 1
+        else:
+            chosen = choose_option_interactively(options, console=console)
+            if chosen is None:
+                return None
+            index = chosen.index
 
     if index < 1 or index > len(options):
         msg = f"  Option [{index}] not found. Available options: 1 to {len(options)}"
-        if console:
-            console.write(console.paint(msg, "red"))
-        else:
-            print(msg)
+        console.write(console.paint(msg, "red"))
         return None
 
     opt = options[index - 1]
-    console = console or get_console()
     console.write(console.paint(f"\n  ▶ Executing Option [{opt.index}]: {opt.title}", "green", bold=True))
 
     try:
@@ -253,8 +408,34 @@ def execute_option(
                 console.write(console.paint("  ! Patch could not be applied.", "yellow"))
             return changed
 
-        # 3. Command kind (e.g. /FIX, /SFB)
+        # 3. Command kind (e.g. /+, /FIX, /SFB, /SETUP)
         if opt.kind == "command" or opt.command.startswith("/"):
+            if opt.command in ("+", "/+", "/ai", "/ask", "/ai_escalate"):
+                from .config import TIER_COMMAND
+                from .hooks import last_error, last_report
+                from .ladder import diagnose, diagnose_text
+                from .render import render_report
+
+                err = last_error()
+                rep = last_report()
+                if err is not None:
+                    console.write(console.paint("  🧠 Sending full error context to AI (Flash)...", "cyan", bold=True))
+                    new_report = diagnose(err, force_gemini=True, tier=TIER_COMMAND)
+                    render_report(new_report, console=console)
+                    return new_report
+                elif rep is not None:
+                    console.write(console.paint("  🧠 Sending full error context to AI (Flash)...", "cyan", bold=True))
+                    new_report = diagnose_text(f"{rep.exc_type}: {rep.exc_message}\n{rep.where}", force_gemini=True, tier=TIER_COMMAND)
+                    render_report(new_report, console=console)
+                    return new_report
+                else:
+                    console.write(console.paint("  No recent error found to send to AI.", "yellow"))
+                    return None
+
+            if opt.command.upper() in ("/UPDATE", "/UPGRADE", "UPDATE", "UPGRADE"):
+                from .updater import run_upgrade
+                return run_upgrade(console=console)
+
             from .shortcuts import run as run_shortcut
             from .render import render_scan
 
@@ -266,13 +447,13 @@ def execute_option(
             render_scan(res, root=os.getcwd())
             return res
 
-        # 4. Shell kind - only an allow-listed package install, no shell
+        # 4. Shell kind - package install
         if opt.kind == "shell":
             argv = safe_install_argv(opt.command)
             if argv is None:
                 console.write(
                     console.paint(
-                        f"  Refused to run: {opt.command}" + chr(10) +
+                        f"  Refused to run: {opt.command}\n"
                         "  Only a plain `pip install <package>` may run from a suggestion.",
                         "yellow",
                     )
@@ -290,9 +471,7 @@ def execute_option(
                 console.write(console.paint(f"  ! Command exited with code {proc.returncode}", "red"))
             return proc.returncode
 
-        # 5. Model-written code: shown, never executed.
-        # It arrived as text from a model, so running it on a keystroke would
-        # mean executing something the user never read.
+        # 5. Code snippet / Python statement: shown clearly for user review
         if opt.kind in ("snippet", "python"):
             console.write(console.paint("  Suggested code (not executed):", "cyan"))
             for line in opt.command.splitlines():

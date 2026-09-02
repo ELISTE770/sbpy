@@ -49,7 +49,7 @@ def report():
     return sbpy.last_report()
 
 
-def apply(index: int = 1):
+def apply(index: int | None = None):
     """Executes a numbered suggestion/action from the last report or scan."""
     return sbpy.execute_option(index, globals(), _console)
 
@@ -83,6 +83,25 @@ def commit(message: str = ""):
     from sbpy.git_ops import git_commit_changes
 
     return git_commit_changes(message=message, console=_console)
+
+
+def clean(text: str = "") -> str:
+    """Cleans pasted code snippets from REPL prompts (>>>) and line numbers."""
+    from sbpy.cleaner import clean_pasted_code
+
+    if not text:
+        print(_p("Usage: clean('''pasted code''')", "yellow"))
+        return ""
+    res = clean_pasted_code(text)
+    print(res)
+    return res
+
+
+def update():
+    """Checks and installs updates from GitHub."""
+    from sbpy.updater import run_upgrade
+
+    return run_upgrade(sbpy.get_config(), console=_console)
 
 
 def fullinfo():

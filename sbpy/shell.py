@@ -15,6 +15,7 @@ from __future__ import annotations
 import ast
 import code as code_module
 import os
+import re
 import sys
 from typing import Any
 
@@ -54,6 +55,14 @@ def parse_at_line(line: str) -> dict[str, Any] | None:
 
     line = normalize_input_command(line)
     raw = line.strip()
+
+    if raw.upper() in ("/UPDATE", "/UPGRADE", "UPDATE", "UPGRADE", "/עדכן", "עדכן"):
+        return {"kind": "update"}
+    if raw in ("++", "/++"):
+        return {"kind": "ai_escalate", "tier": TIER_PRO}
+    if raw in ("+", "/+", "/ai", "/ask_ai", "/ai_escalate") or raw.lower() in ("ai", "ask_ai", "שאל"):
+        return {"kind": "ai_escalate", "tier": TIER_COMMAND}
+
     if not (raw.startswith("/") or raw.startswith("@")):
         from .keyboard import transliterate_keyboard
 
@@ -156,6 +165,18 @@ class SBpyConsole(code_module.InteractiveConsole):
 
     # ------------------------------------------------------------------
     def push(self, line, filename=None, _symbol="single"):  # type: ignore[no-untyped-def]
+        # Clean pasted code with >>> prompts or line number prefixes
+        if line.lstrip().startswith((">>>", "...")) or re.match(r"^\s*(?:\d+\s*[|:]|\[\d+\])", line):
+            from .cleaner import clean_pasted_code
+
+            cleaned = clean_pasted_code(line)
+            if cleaned != line:
+                lines = cleaned.splitlines()
+                more = 0
+                for sub_line in lines:
+                    more = super().push(sub_line, filename, _symbol)
+                return more
+
         # רק בתחילת משפט. באמצע בלוק רב-שורתי `/` הוא קוד רגיל.
         if not self.buffer:
             raw = line.strip()
@@ -174,6 +195,10 @@ class SBpyConsole(code_module.InteractiveConsole):
                 if 1 <= idx <= len(get_options()):
                     self.handle_at({"kind": "option", "index": idx})
                     return 0
+
+            if raw.lower() in ("choose", "choose()", "opt", "opt()", "apply", "apply()", "בחר", "אפשרויות"):
+                self.handle_at({"kind": "option", "index": None})
+                return 0
 
             parsed = parse_at_line(line)
             if parsed is not None:
@@ -355,6 +380,37 @@ class SBpyConsole(code_module.InteractiveConsole):
 
                 start_dashboard_server(console=self.console)
                 return
+
+            if parsed["kind"] == "update":
+                from .updater import run_upgrade
+
+                run_upgrade(self.config, console=self.console)
+                return
+
+            if parsed["kind"] == "ai_escalate":
+                from .hooks import last_error, last_report
+                from .ladder import diagnose, diagnose_text
+                from .render import render_report
+
+                tier = parsed.get("tier", TIER_COMMAND)
+                label = "Pro" if tier == TIER_PRO else "Flash"
+                err = last_error()
+                rep = last_report()
+                if err is not None:
+                    self.console.write()
+                    self.console.write(self.console.paint(f"  🧠 Sending full error context to AI ({label})...", "cyan", bold=True))
+                    new_report = diagnose(err, force_gemini=True, tier=tier, config=self.config)
+                    render_report(new_report, config=self.config, console=self.console)
+                    return
+                elif rep is not None:
+                    self.console.write()
+                    self.console.write(self.console.paint(f"  🧠 Sending full error context to AI ({label})...", "cyan", bold=True))
+                    new_report = diagnose_text(f"{rep.exc_type}: {rep.exc_message}\n{rep.where}", force_gemini=True, tier=tier, config=self.config)
+                    render_report(new_report, config=self.config, console=self.console)
+                    return
+                else:
+                    self.console.write(self.console.paint("  No recent error found to send to AI.", "yellow"))
+                    return
 
             if parsed["kind"] == "option":
                 from .suggestions import execute_option

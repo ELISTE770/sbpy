@@ -1286,7 +1286,7 @@ def fix_syntax(info: ErrorInfo) -> list[Diagnosis]:
                     title=title,
                     detail=detail,
                     suggestion=suggestion,
-                    confidence=0.98 if is_valid else 0.88,
+                    confidence=0.98 if is_valid else 0.65,
                     source="local",
                     rule="syntax.keyboard-layout",
                     patch=translated,

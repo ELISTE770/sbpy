@@ -279,7 +279,10 @@ class Config:
     model_pro: str = field(
         default_factory=lambda: _env_str("SBPY_MODEL_PRO", DEFAULT_MODEL_PRO, "model_pro")
     )
-    timeout: float = field(default_factory=lambda: _env_float("SBPY_TIMEOUT", 60.0, "timeout"))
+    timeout: float = field(default_factory=lambda: _env_float("SBPY_TIMEOUT", 12.0, "timeout"))
+    check_updates: bool = field(default_factory=lambda: _env_bool("SBPY_CHECK_UPDATES", True, "check_updates"))
+    update_interval_hours: int = field(default_factory=lambda: _env_int("SBPY_UPDATE_INTERVAL_HOURS", 6, "update_interval_hours"))
+    github_repo: str = field(default_factory=lambda: _env_str("SBPY_REPO", "eliste770-cmyk/sbpy", "github_repo"))
     store: bool = field(default_factory=lambda: _env_bool("SBPY_STORE", False, "store"))
     """האם לאפשר לשרת לשמור את האינטראקציה. ברירת מחדל: לא (פרטיות)."""
 

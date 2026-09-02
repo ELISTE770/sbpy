@@ -1,0 +1,61 @@
+{
+  "name": "sbpy-vscode",
+  "displayName": "SBpy: Intelligent Python Diagnostics & AI Pair Programmer",
+  "description": "Real-time Python diagnostics, multi-provider AI pair programmer, and instant code repair.",
+  "version": "0.1.0",
+  "publisher": "sbpy",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Snippets"
+  ],
+  "keywords": [
+    "python",
+    "ai",
+    "gemini",
+    "diagnostics",
+    "lsp"
+  ],
+  "activationEvents": [
+    "onLanguage:python"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "sbpy.fix",
+        "title": "SBpy: Apply AI Code Fix",
+        "category": "SBpy"
+      },
+      {
+        "command": "sbpy.ask",
+        "title": "SBpy: Ask AI about current code",
+        "category": "SBpy"
+      },
+      {
+        "command": "sbpy.dashboard",
+        "title": "SBpy: Open Web Dashboard",
+        "category": "SBpy"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "SBpy",
+      "properties": {
+        "sbpy.serverPath": {
+          "type": "string",
+          "default": "sbpy",
+          "description": "Path to the sbpy executable."
+        },
+        "sbpy.enableLsp": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable SBpy Language Server Protocol."
+        }
+      }
+    }
+  }
+}

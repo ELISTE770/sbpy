@@ -96,10 +96,16 @@ def render_report(
     options = register_options_from_report(report)
     if options:
         console.write()
-        console.write(f"  {console.paint('Quick Actions / Suggested Fixes:', 'cyan', bold=True)}")
+        header = "💡 פעולות ותיקונים מוצעים:" if lang == "he" else "💡 Quick Actions / Suggested Fixes:"
+        tip = (
+            "💡 הקש 1 או /1 להחלה מיידית, או בחר עם החיצים ב-choose()"
+            if lang == "he"
+            else "💡 Type 1 or /1 to execute immediately, or choose() to select with arrow keys"
+        )
+        console.write(f"  {console.paint(header, 'cyan', bold=True)}")
         for opt in options:
             console.write(f"    {console.paint(f'[{opt.index}]', 'bright_yellow', bold=True)} {opt.title}")
-        console.write(f"    {console.paint('💡 Type 1 or /1 to execute immediately', 'grey', dim=True)}")
+        console.write(f"    {console.paint(tip, 'grey', dim=True)}")
 
     text, color = _footer_text(report, lang)
     if text:

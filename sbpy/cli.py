@@ -678,7 +678,17 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     console.write(f"  Gemini OK:  {'Yes' if gem_status.get('connected') else 'No'}")
     console.write(f"  Home dir:   {config.home}")
     console.write(f"  Cache dir:  {config.cache_dir}")
-    console.write(f"  Usage file: {config.usage_file}\n")
+    console.write(f"  Usage file: {config.usage_file}")
+    try:
+        from .updater import check_for_updates
+        update_info = check_for_updates(config=config, timeout=2.0)
+        if update_info.get("update_available"):
+            console.write(console.paint(f"  Update:     v{update_info.get('latest_version')} available! (run: sbpy update)", "yellow", bold=True))
+        else:
+            console.write(f"  Update:     Up to date (v{__version__})")
+    except Exception:  # sbpy: ignore=silent-except
+        pass
+    console.write("")
     return EXIT_OK
 
 
@@ -1324,7 +1334,52 @@ def cmd_setup(args: argparse.Namespace) -> int:
     except Exception as e:
         console.write(console.paint(f"  ! Error during connection test: {e}", "red"))
 
+    try:
+        from .terminal_alias import install_terminal_aliases
+        install_terminal_aliases()
+    except Exception:  # sbpy: ignore=silent-except
+        pass
+
     console.write(console.paint("\n  ✨ Setup Complete! Configuration saved in ~/.sbpy/config.json\n", "green", bold=True))
+    return EXIT_OK
+
+
+def cmd_install_global(args: argparse.Namespace) -> int:
+    """Installs global wrappers and aliases for דנפט and טפנד across the system."""
+    console = get_console(False if args.no_color else None)
+    from .terminal_alias import install_terminal_aliases
+
+    console.write(console.paint("\n  ⌨️ Installing SBpy Global Terminal Aliases...", "cyan", bold=True))
+    created = install_terminal_aliases()
+    for item in created:
+        console.write(f"  ✓ {item}")
+    console.write(console.paint(f"\n  ✨ Installed {len(created)} wrapper scripts and PowerShell aliases!", "green", bold=True))
+    console.write(console.paint("  You can now type `דנפט`, `טפנד`, or `sbpy` in any terminal.\n", "green"))
+    return EXIT_OK
+
+
+def cmd_check_update(args: argparse.Namespace) -> int:
+    from .updater import check_for_updates
+    config = _apply_common(args)
+    console = get_console(config.color)
+    console.write(console.paint("\n  🔍 Checking GitHub for SBpy updates...", "cyan"))
+    info = check_for_updates(config=config, force=True, timeout=5.0)
+    if info.get("update_available"):
+        latest = info.get("latest_version")
+        curr = info.get("current_version")
+        cmd = info.get("install_cmd")
+        console.write(console.paint(f"\n  🔔 New version available: v{curr} -> v{latest}!", "yellow", bold=True))
+        console.write(f"  To update, run:\n    {cmd}\n")
+        if getattr(args, "install", False):
+            console.write(console.paint(f"  Running: {cmd} ...\n", "cyan"))
+            import subprocess
+            code = subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", f"git+https://github.com/{info.get('repo')}"])
+            return code
+    else:
+        if info.get("status") == "network_unavailable":
+            console.write(console.paint("  ! Could not reach GitHub to check updates (offline or network error).\n", "yellow"))
+        else:
+            console.write(console.paint(f"  ✓ SBpy is up to date (v{__version__}).\n", "green", bold=True))
     return EXIT_OK
 
 
@@ -1508,6 +1563,16 @@ def build_parser() -> argparse.ArgumentParser:
     ci_parser = subparsers.add_parser("init-ci", parents=[common], help="Generate GitHub Actions CI workflow")
     ci_parser.add_argument("path", nargs="?", default=".", help="Repository root directory")
 
+    # install-global
+    subparsers.add_parser("install-global", parents=[common], help="Install terminal aliases for דנפט and טפנד across the system")
+
+    # check-update and update
+    check_up_p = subparsers.add_parser("check-update", parents=[common], help="Check GitHub for SBpy updates")
+    check_up_p.add_argument("--force", action="store_true", help="Bypass cache and force check")
+
+    update_p = subparsers.add_parser("update", parents=[common], help="Check and install SBpy update from GitHub")
+    update_p.add_argument("--force", action="store_true", help="Force update even if already on latest")
+
     # Register all shortcuts as direct commands: sbpy sfb, sbpy sec, sbpy opt...
     for code, sc in SHORTCUTS.items():
         cmd_name = code.lower()
@@ -1610,6 +1675,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return cmd_install_hook(args)
     if cmd in ("init-ci", "initci", "ci"):
         return cmd_init_ci(args)
+    if cmd in ("install-global", "installglobal"):
+        return cmd_install_global(args)
+    if cmd in ("check-update", "checkupdate"):
+        return cmd_check_update(args)
+    if cmd in ("update", "upgrade"):
+        args.install = True
+        return cmd_check_update(args)
     if cmd == "heal":
         return cmd_heal(args)
     if cmd == "agent":

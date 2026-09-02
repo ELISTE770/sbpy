@@ -113,11 +113,19 @@ def diagnose(
         report.snippet_mark = info.ctx.lineno
         report.file = info.ctx.filename
 
-    # --- שכבה 1: תיקונים מקומיים ---
-    for diagnosis in run_fixers(info):
-        report.add(diagnosis)
-
     key_line = info.ctx.line if info.ctx else ""
+    exc_text = getattr(exc, "text", "") or ""
+    is_foreign_syntax = isinstance(exc, SyntaxError) and any(ord(c) > 127 for c in f"{key_line} {exc_text}")
+
+    if is_foreign_syntax and not config.offline:
+        # User directive: send immediately to AI (Flash) without relying on local heuristics
+        force_gemini = True
+        tier = TIER_COMMAND
+    else:
+        # --- שכבה 1: תיקונים מקומיים ---
+        for diagnosis in run_fixers(info):
+            report.add(diagnosis)
+
     report.fingerprint = fingerprint(
         type(exc).__name__,
         str(exc),
@@ -131,7 +139,7 @@ def diagnose(
         return report
 
     # --- שכבה 2.5: בסיס ידע מקומי ---
-    if config.knowledge:
+    if config.knowledge and not is_foreign_syntax:
         entry = knowledge.lookup(report.exc_type, report.exc_message, config=config)
         if entry is not None:
             report.add(entry)
@@ -141,7 +149,7 @@ def diagnose(
                 return report
 
     # --- שכבה 2.6: כללים שנלמדו מתשובות קודמות ---
-    if config.learning and not force_gemini:
+    if config.learning and not is_foreign_syntax and not force_gemini:
         remembered = learn.lookup(report.exc_type, report.exc_message, config=config)
         if remembered is not None:
             report.add(remembered)
@@ -154,7 +162,7 @@ def diagnose(
     # --- שכבה 0: מטמון ---
     cache = Cache(config)
     cached = cache.get(report.fingerprint)
-    if cached and not force_gemini:
+    if cached and not (force_gemini and not is_foreign_syntax):
         diagnosis = _diagnosis_from_payload(cached, "cache", str(cached.get("model", "")))
         if diagnosis is not None:
             report.add(diagnosis)

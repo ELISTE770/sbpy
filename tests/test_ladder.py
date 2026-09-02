@@ -278,6 +278,17 @@ class HookTest(IsolatedConfigTest):
         self.assertFalse(hooks.is_installed())
         self.assertIs(sys.excepthook, original)
 
+    def test_foreign_syntax_error_escalates_to_flash_directly(self) -> None:
+        """When a SyntaxError has foreign keyboard characters, escalate directly to Flash."""
+        config = self.online_config()
+        try:
+            compile("הדפס('hello')", "<stdin>", "exec")
+        except SyntaxError as exc:
+            report = ladder.diagnose(exc, config=config)
+            self.assertTrue(report.escalated)
+            self.assertEqual(len(self.engine.calls), 1)
+            self.assertEqual(self.engine.calls[0]["tier"], "command")
+
 
 if __name__ == "__main__":
     unittest.main()

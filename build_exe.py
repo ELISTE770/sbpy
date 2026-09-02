@@ -122,12 +122,13 @@ def build_executable(project_root: Path, ico_path: Path, version_file: Path) -> 
     entry_point = project_root / "sbpy_runner.py"
     assets_dir = project_root / "assets"
     
+    work_dir = Path(os.environ.get("TEMP", ".")) / "sbpy_build_work"
     cmd = [
         sys.executable,
         "-m",
         "PyInstaller",
         "--noconfirm",
-        "--clean",
+        f"--workpath={work_dir}",
         "--name=sbpy",
         "--onefile",
         "--console",
@@ -188,6 +189,10 @@ def build_executable(project_root: Path, ico_path: Path, version_file: Path) -> 
         "--hidden-import=sbpy.test_gen",
         "--hidden-import=sbpy.testgen",
         "--hidden-import=sbpy.watcher",
+        "--hidden-import=sbpy.cleaner",
+        "--hidden-import=sbpy.terminal_alias",
+        "--hidden-import=sbpy.updater",
+        "--hidden-import=sbpy.keyboard",
         "--hidden-import=sbpy._startup",
         str(entry_point),
     ]

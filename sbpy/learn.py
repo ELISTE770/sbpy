@@ -147,6 +147,10 @@ def _learn_package(report: Report, diagnosis: Diagnosis, config: Config) -> bool
 
 
 def _learn_signature(report: Report, diagnosis: Diagnosis, config: Config) -> bool:
+    # SyntaxError תלוי בשורת הקוד הספציפית ולעולם אינו מוכלל גלובלית לכל שגיאות התחביר
+    if report.exc_type in ("SyntaxError", "IndentationError", "TabError"):
+        return False
+
     key = signature(report.exc_type, report.exc_message)
     if not key or not diagnosis.title:
         return False
@@ -204,6 +208,9 @@ def package_for(module: str, *, config: Config | None = None) -> str | None:
 
 def lookup(exc_type: str, message: str, *, config: Config | None = None) -> Diagnosis | None:
     """מחפש כלל שנלמד. מעדכן מונה פגיעות."""
+    if exc_type in ("SyntaxError", "IndentationError", "TabError"):
+        return None
+
     config = config or get_config()
     if not config.learning:
         return None
